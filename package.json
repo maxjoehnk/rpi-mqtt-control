@@ -1,0 +1,11 @@
+{
+  "name": "rpi-mqtt-control",
+  "version": "1.0.0",
+  "main": "index.js",
+  "license": "MIT",
+  "dependencies": {
+    "js-yaml": "^3.14.0",
+    "mqtt": "^4.1.0",
+    "rpi-backlight": "^0.3.0"
+  }
+}
