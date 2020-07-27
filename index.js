@@ -68,9 +68,9 @@ async function publishBacklightState(broker, baseTopic) {
 async function fadeBrightness(from, to) {
     while (from !== to) {
         if (from > to) {
-            ++from;
-        }else {
             --from;
+        }else {
+            ++from;
         }
         await backlight.setBrightness(from.toString());
         await timeout(16);
