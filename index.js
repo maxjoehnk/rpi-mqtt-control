@@ -2,6 +2,7 @@ const mqtt = require('mqtt');
 const { safeLoad } = require('js-yaml');
 const { readFile } = require('fs').promises;
 const backlight = require('rpi-backlight');
+const { getActiveWindow } = require('active-windows');
 
 (async () => {
     const configContent = await readFile('./config.yml');
@@ -9,35 +10,47 @@ const backlight = require('rpi-backlight');
 
     const broker = mqtt.connect(config.mqtt.url);
 
-    let baseTopic = `homeassistant/light/${config.hass.entity_id}`;
-    broker.publish(`${baseTopic}/config`, JSON.stringify({
-        '~': baseTopic,
-        name: config.hass.name,
-        unique_id: config.hass.entity_id,
+    let backlightTopic = `homeassistant/light/${config.hass.entity_id}/backlight`;
+    broker.publish(`${backlightTopic}/config`, JSON.stringify({
+        '~': backlightTopic,
+        name: `${config.hass.name} Backlight`,
+        unique_id: `${config.hass.entity_id}-backlight`,
         cmd_t: "~/set",
         stat_t: "~/state",
         schema: "json",
         brightness: true,
     }));
-    await publishState(broker, baseTopic);
+    let idleSensorTopic = `homeassistant/binary_sensor/${config.hass.entity_id}/idle`;
+    broker.publish(`${idleSensorTopic}/config`, JSON.stringify({
+        '~': idleSensorTopic,
+        name: `${config.hass.name} Idle`,
+        unique_id: `${config.hass.entity_id}-idle`,
+        state_topic: "~/state"
+    }));
+    await publishBacklightState(broker, backlightTopic);
     broker.on('message', async (topic, message) => {
-        if (topic === `${baseTopic}/set`) {
+        if (topic === `${backlightTopic}/set`) {
             let payload = JSON.parse(message.toString());
-            if (payload.state === 'ON') {
+            if (payload.state.toLowerCase() === 'on') {
                 await backlight.powerOn();
-            }else {
+            } else {
                 await backlight.powerOff();
             }
             if (payload.brightness != null) {
-                await backlight.setBrightness(payload.brightness);
+                await backlight.setBrightness(payload.brightness.toString());
             }
-            await publishState(broker, baseTopic);
+            await publishBacklightState(broker, backlightTopic);
         }
     });
-    broker.subscribe(`${baseTopic}/set`);
+    broker.subscribe(`${backlightTopic}/set`);
+    setInterval(() => {
+        const { idleTime } = getActiveWindow();
+        const idle = parseInt(idleTime, 10) >= config.idle_timeout;
+        broker.publish(`${idleSensorTopic}/state`, idle ? 'ON' : 'OFF');
+    }, 1000);
 })();
 
-async function publishState(broker, baseTopic) {
+async function publishBacklightState(broker, baseTopic) {
     broker.publish(`${baseTopic}/state`, JSON.stringify({
         state: await backlight.isPoweredOn() ? 'ON' : 'OFF',
         brightness: await backlight.getBrightness(),
