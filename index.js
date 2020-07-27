@@ -19,6 +19,7 @@ const backlight = require('rpi-backlight');
         schema: "json",
         brightness: true,
     }));
+    await publishState(broker, baseTopic);
     broker.on('message', async (topic, message) => {
         if (topic === `${baseTopic}/set`) {
             let payload = JSON.parse(message.toString());
@@ -30,11 +31,15 @@ const backlight = require('rpi-backlight');
             if (payload.brightness != null) {
                 await backlight.setBrightness(payload.brightness);
             }
-            broker.publish(`${baseTopic}/state`, JSON.stringify({
-                state: await backlight.isPoweredOn() ? 'ON' : 'OFF',
-                brightness: await backlight.getBrightness(),
-            }));
+            await publishState(broker, baseTopic);
         }
     });
     broker.subscribe(`${baseTopic}/set`);
 })();
+
+async function publishState(broker, baseTopic) {
+    broker.publish(`${baseTopic}/state`, JSON.stringify({
+        state: await backlight.isPoweredOn() ? 'ON' : 'OFF',
+        brightness: await backlight.getBrightness(),
+    }));
+}
