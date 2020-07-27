@@ -4,6 +4,8 @@ const { readFile } = require('fs').promises;
 const backlight = require('rpi-backlight');
 const { getActiveWindow } = require('active-windows');
 
+const timeout = (timeout) => new Promise(resolve => setInterval(() => resolve(), timeout));
+
 (async () => {
     const configContent = await readFile('./config.yml');
     const config = safeLoad(configContent);
@@ -15,9 +17,9 @@ const { getActiveWindow } = require('active-windows');
         '~': backlightTopic,
         name: `${config.hass.name} Backlight`,
         unique_id: `${config.hass.entity_id}-backlight`,
-        cmd_t: "~/set",
-        stat_t: "~/state",
-        schema: "json",
+        cmd_t: '~/set',
+        stat_t: '~/state',
+        schema: 'json',
         brightness: true,
     }));
     let idleSensorTopic = `homeassistant/binary_sensor/${config.hass.entity_id}/idle`;
@@ -25,7 +27,7 @@ const { getActiveWindow } = require('active-windows');
         '~': idleSensorTopic,
         name: `${config.hass.name} Idle`,
         unique_id: `${config.hass.entity_id}-idle`,
-        state_topic: "~/state"
+        state_topic: '~/state'
     }));
     await publishBacklightState(broker, backlightTopic);
     broker.on('message', async (topic, message) => {
@@ -37,17 +39,23 @@ const { getActiveWindow } = require('active-windows');
                 await backlight.powerOff();
             }
             if (payload.brightness != null) {
-                await backlight.setBrightness(payload.brightness.toString());
+                const current = await backlight.getBrightness();
+                await fadeBrightness(current, payload.brightness);
             }
             await publishBacklightState(broker, backlightTopic);
         }
     });
     broker.subscribe(`${backlightTopic}/set`);
+    let isIdle = null;
     setInterval(() => {
         const { idleTime } = getActiveWindow();
         const idle = parseInt(idleTime, 10) >= config.idle_timeout;
+        if (idle === isIdle) {
+            return;
+        }
         broker.publish(`${idleSensorTopic}/state`, idle ? 'ON' : 'OFF');
-    }, 1000);
+        isIdle = idle;
+    }, 100);
 })();
 
 async function publishBacklightState(broker, baseTopic) {
@@ -55,4 +63,15 @@ async function publishBacklightState(broker, baseTopic) {
         state: await backlight.isPoweredOn() ? 'ON' : 'OFF',
         brightness: await backlight.getBrightness(),
     }));
+}
+
+async function fadeBrightness(from, to) {
+    while (from !== to) {
+        if (from > to) {
+            await backlight.setBrightness(++from);
+        }else {
+            await backlight.setBrightness(--from);
+        }
+        await timeout(16);
+    }
 }
