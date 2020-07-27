@@ -40,7 +40,7 @@ const timeout = (timeout) => new Promise(resolve => setInterval(() => resolve(),
             }
             if (payload.brightness != null) {
                 const current = await backlight.getBrightness();
-                await fadeBrightness(current, payload.brightness);
+                await fadeBrightness(current, payload.brightness, config.fade_timeout);
             }
             await publishBacklightState(broker, backlightTopic);
         }
@@ -65,7 +65,7 @@ async function publishBacklightState(broker, baseTopic) {
     }));
 }
 
-async function fadeBrightness(from, to) {
+async function fadeBrightness(from, to, pause_duration = 10) {
     while (from !== to) {
         if (from > to) {
             --from;
@@ -73,6 +73,6 @@ async function fadeBrightness(from, to) {
             ++from;
         }
         await backlight.setBrightness(from.toString());
-        await timeout(16);
+        await timeout(pause_duration);
     }
 }
